@@ -1,6 +1,8 @@
 // use std::rc::Rc;
 use std::ops::Deref;
+use std::fmt;
 
+// #[derive(Debug)]
 struct MyRc<T>{
     data: *mut T,
     count: usize,
@@ -26,9 +28,20 @@ impl<T> MyRc<T>{
 impl<T> Deref for MyRc<T>{
     type Target = T;
     fn deref(&self) -> &Self::Target{
+        
         unsafe{
+            // println!("data from deref:{}", *self.data);
             &*self.data
         }
+    }
+}
+
+impl<T: std::fmt::Display> fmt::Display for MyRc<T>{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        unsafe{
+            write!(f, "{}",*self.data)
+        }
+        
     }
 }
 
@@ -47,12 +60,14 @@ impl<T> Drop for MyRc<T>{
 
 fn main() {
     let mut rc1=MyRc::new(5);
-    println!("rc1's data is: {}",*rc1);
-    println!("current count is {}",rc1.strong_conut());
+    // println!("rc1's data is: {:?}",rc1);
+    println!("rc1's data is: {}",rc1);
+    println!("current count is {}",MyRc::strong_conut(&rc1));
     {
         println!("----let rc2=rc1.clone()----");
-        let rc2=rc1.clone();
-        println!("rc2's data is: {}",*rc2);
+        let rc2=MyRc::clone(&mut rc1);
+        // println!("rc2's data is: {:?}",rc2);
+        println!("rc2's data is: {}",rc2);
         println!("current count is {}",rc1.strong_conut());
     }
 }
