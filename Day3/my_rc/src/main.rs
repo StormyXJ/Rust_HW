@@ -1,73 +1,97 @@
 // use std::rc::Rc;
+use std::cell::RefCell;
 use std::ops::Deref;
-use std::fmt;
-
+use std::ptr::NonNull;
 // #[derive(Debug)]
-struct MyRc<T>{
-    data: *mut T,
-    count: usize,
+struct RcInner<T> {
+    count: RefCell<usize>,
+    value: T,
+}
+struct MyRc<T> {
+    data: Box<NonNull<RcInner<T>>>,
 }
 
-impl<T> MyRc<T>{
-    fn new(x: T)-> MyRc<T>{
-        MyRc{data: Box::into_raw(Box::new(x)),
-             count: 1}
-    } 
-    
-    fn clone(&mut self) -> Self{
-        self.count += 1;
-
-        MyRc{data: self.data, count: self.count}
+impl<T: Clone> MyRc<T> {
+    fn new(x: T) -> MyRc<T> {
+        // let ref_cell=RefCell::new((x,1 as usize));
+        // let non_ref=NonNull::new(Box::into_raw(Box::new(ref_cell)));
+        // MyRc{data: Box::new(NonNull::new(Box::into_raw(Box::new(RefCell::new((x,1 as usize))))).expect("Invalid"))}
+        MyRc {
+            data: Box::new(
+                NonNull::new(Box::into_raw(Box::new({
+                    RcInner {
+                        count: RefCell::new(1 as usize),
+                        value: x,
+                    }
+                })))
+                .unwrap(),
+            ),
+        }
     }
 
-    fn strong_conut(&self) -> usize{
-        self.count
+    fn clone(&mut self) -> Self {
+        unsafe {
+            *(*self.data).as_ref().count.borrow_mut() += 1;
+        }
+
+        MyRc {
+            data: Box::new(*self.data.clone()),
+        }
+    }
+
+    fn strong_conut(&self) -> usize {
+        unsafe { *(*self.data).as_ref().count.borrow() }
     }
 }
 
-impl<T> Deref for MyRc<T>{
+impl<T> Deref for MyRc<T> {
     type Target = T;
-    fn deref(&self) -> &Self::Target{
-        
-        unsafe{
-            // println!("data from deref:{}", *self.data);
-            &*self.data
-        }
+    fn deref(&self) -> &Self::Target {
+        unsafe { &(*self.data).as_ref().value }
+
+        // println!("data from deref:{}", *self.data);
+        // &*(*self.data).borrow()
     }
 }
 
-impl<T: std::fmt::Display> fmt::Display for MyRc<T>{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        unsafe{
-            write!(f, "{}",*self.data)
-        }
-        
-    }
-}
+// impl<T: std::fmt::Display> fmt::Display for MyRc<T>{
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//             write!(f, "{}",*self.data)
 
-impl<T> Drop for MyRc<T>{
+//     }
+// }
 
+impl<T> Drop for MyRc<T> {
     fn drop(&mut self) {
-        if self.count != 0 {
-            self.count -= 1;
-        }else{
-            unsafe{
-                let _ = Box::from_raw(self.data);
+        unsafe {
+            if *(*self.data).as_ref().count.borrow() != 0 {
+                *(*self.data).as_ref().count.borrow_mut() -= 1;
+            } else {
+                let _ = (*self.data).as_ref().count;
+                let _ = (*self.data).as_ptr();
+                let _ = self.data;
             }
         }
     }
 }
 
 fn main() {
-    let mut rc1=MyRc::new(5);
+    let mut rc1 = MyRc::new(5);
     // println!("rc1's data is: {:?}",rc1);
-    println!("rc1's data is: {}",rc1);
-    println!("current count is {}",MyRc::strong_conut(&rc1));
+    println!("rc1={}", *rc1);
+    println!("cnt1={}", MyRc::strong_conut(&rc1));
+    let mut rc2 = MyRc::clone(&mut rc1);
+    println! {"cnt1={},cnt2={},rc1={},rc2={}",rc1.strong_conut(),rc2.strong_conut(),*rc1,*rc2};
     {
-        println!("----let rc2=rc1.clone()----");
-        let rc2=MyRc::clone(&mut rc1);
+        let rc3 = MyRc::clone(&mut rc2);
         // println!("rc2's data is: {:?}",rc2);
-        println!("rc2's data is: {}",rc2);
-        println!("current count is {}",rc1.strong_conut());
+        println!("rc3={}", *rc3);
+        println!(
+            "cnt1={},cnt2={},cnt3={}",
+            rc1.strong_conut(),
+            rc2.strong_conut(),
+            rc3.strong_conut()
+        );
     }
+    println! {"cnt1={},cnt2={}",rc1.strong_conut(),rc2.strong_conut()};
 }
