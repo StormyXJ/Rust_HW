@@ -51,7 +51,7 @@ impl Signal{
 
 impl Wake for Signal{
     fn wake(self: Arc<Self>){
-        println!("\nwake from signal\n");
+        // println!("\nwake from signal\n");
         self.notify();
     }
 }

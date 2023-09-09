@@ -1,13 +1,17 @@
+use std::thread;
 mod signal;
 mod executor;
 use crate::executor::*;
 
 async fn demo(){
+    println!("demo's thread id: {:?}",thread::current().id());
     let (tx1,rx1)=async_channel::bounded::<()>(1);
     let (tx2,rx2)=async_channel::bounded::<()>(1);
 
-    my_spawn(demo2(tx1));
-    my_spawn(demo3(tx2));
+    // async_std::task::spawn(demo2(tx1));
+    Executor::my_spawn(demo2(tx1));
+    Executor::my_spawn(demo3(tx2));
+
     println!("spawn in demo done!");
 
     let _ =rx1.recv().await;
@@ -19,32 +23,37 @@ async fn demo(){
 }
 
 async fn demo2(tx: async_channel::Sender<()>){
-    println!("\nstart demo2");
-
+    
+    println!("start demo2");
+    println!("demo2's thread id: {:?}",thread::current().id());
+    
     let mut _sum=0;
     for i in 0..1000{
         _sum+=i;
     }
     // std::thread::sleep(std::time::Duration::from_secs(5));
-    println!("sum in demo2: {}\n",_sum);
+    println!("sum in demo2: {}",_sum);
 
     let _ =tx.send(()).await;
 }
 
 async fn demo3(tx: async_channel::Sender<()>){
-    println!("\nstart demo3");
+    println!("start demo3");
+    println!("demo3's thread id: {:?}",thread::current().id());
 
     let mut _sum=0;
     for i in 1..1000{
         _sum+=i;
     }
-    println!("sum in demo2: {}\n",_sum);
+    println!("sum in demo3: {}",_sum);
 
     let _ =tx.send(()).await;
 }
 
 fn main() {
-    block_on(demo());
+    // EX=Executor::new();
+    let ex=Executor::new(3);
+    ex.block_on(demo());
 }
 
 // struct Demo;
