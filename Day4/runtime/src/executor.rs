@@ -25,7 +25,6 @@ unsafe impl Sync for Task{}
 
 impl Wake for Task{
     fn wake(self: Arc<Self>){
-        println!("wake from task");
         RUNNABLE.with(|runnable| runnable.lock().unwrap().push_back(self.clone()));
         self.signal.notify();
     }
