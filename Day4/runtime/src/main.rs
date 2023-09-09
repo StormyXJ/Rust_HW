@@ -1,6 +1,7 @@
 use std::thread;
 mod signal;
 mod executor;
+use colored::*;
 use crate::executor::*;
 
 async fn demo(){
@@ -15,44 +16,45 @@ async fn demo(){
     println!("spawn in demo done!");
 
     let _ =rx1.recv().await;
-    println!("recv from demo2");
+    // println!("\nrecv from {}","demo2".blue());
 
     let _ =rx2.recv().await;
-    println!("recv from demo3");
+    // println!("recv from {}","demo3".green());
     
 }
 
 async fn demo2(tx: async_channel::Sender<()>){
     
-    println!("start demo2");
-    println!("demo2's thread id: {:?}",thread::current().id());
+    println!("start {}","demo2".blue());
+    println!("{}'s thread id: {:?}","demo2".blue(),thread::current().id());
     
     let mut _sum=0;
     for i in 0..1000{
         _sum+=i;
     }
     // std::thread::sleep(std::time::Duration::from_secs(5));
-    println!("sum in demo2: {}",_sum);
+    println!("sum in {}: {}","demo2".blue(),_sum);
 
     let _ =tx.send(()).await;
 }
 
 async fn demo3(tx: async_channel::Sender<()>){
-    println!("start demo3");
-    println!("demo3's thread id: {:?}",thread::current().id());
+    println!("start {}","demo3".green());
+    println!("{}'s thread id: {:?}","demo3".green(),thread::current().id());
 
     let mut _sum=0;
     for i in 1..1000{
         _sum+=i;
     }
-    println!("sum in demo3: {}",_sum);
+    println!("sum in {}: {}","demo3".green(),_sum);
 
     let _ =tx.send(()).await;
 }
 
 fn main() {
     // EX=Executor::new();
-    let ex=Executor::new(3);
+    let ex=Executor::new(2);//1 and 2 can make diffenent output
+                            //bigger than 2, the output will be various
     ex.block_on(demo());
 }
 
