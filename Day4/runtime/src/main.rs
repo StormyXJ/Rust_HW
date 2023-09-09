@@ -1,104 +1,54 @@
-use std::{future::Future, 
-          task::{RawWakerVTable,Waker,RawWaker,Context,Wake,Poll}, 
-          sync::{Mutex,Condvar, Arc},
-          cell::RefCell,
-          collections::VecDeque};
-use futures::{future::BoxFuture};
-use scoped_tls::scoped_thread_local;
 
-scoped_thread_local!(static SIGNAL: Arc<Signal>);
-scoped_thread_local!(static RUNNABLE: Mutex<VecDeque<Arc<Task>>>);
-// thread_local!(static SIGNAL: Arc<Signal>=Arc::new(Signal::new()));
-// thread_local! {static RUNNABLE: Mutex<VecDeque<Arc<Task>>> = Mutex::new(VecDeque::new());}
-enum State{
-    Empty,
-    Waiting,
-    Notified,
+
+mod signal;
+mod executor;
+use crate::executor::*;
+
+async fn demo(){
+    let (tx1,rx1)=async_channel::bounded::<()>(1);
+    let (tx2,rx2)=async_channel::bounded::<()>(1);
+
+    my_spawn(demo2(tx1));
+    my_spawn(demo3(tx2));
+    println!("spawn in demo done!");
+
+    let _ =rx1.recv().await;
+    println!("recv from demo2");
+
+    let _ =rx2.recv().await;
+    println!("recv from demo3");
+    
 }
-struct Signal{
-    state: Mutex<State>,
-    cond: Condvar,
-}
-impl Signal{
-    fn new()->Signal{
-        Signal{
-            state:Mutex::new(State::Empty),
-            cond:Condvar::new(),    
-        }
-        
+
+async fn demo2(tx: async_channel::Sender<()>){
+    println!("\nstart demo2");
+
+    let mut _sum=0;
+    for i in 0..1000{
+        _sum+=i;
     }
-    fn wait(&self){
-        let mut state=self.state.lock().unwrap();
-        match *state{
-            State::Notified => *state=State::Empty,
-            State::Waiting =>{
-                panic!("miltiple wait");
-            },
-            State::Empty=>{
-                *state=State::Waiting;
-                while let State::Waiting=*state{
-                    state=self.cond.wait(state).unwrap();
-                }
-            }
-        }
+    // std::thread::sleep(std::time::Duration::from_secs(5));
+    println!("sum in demo2: {}\n",_sum);
+
+    let _ =tx.send(()).await;
+}
+
+async fn demo3(tx: async_channel::Sender<()>){
+    println!("\nstart demo3");
+
+    let mut _sum=0;
+    for i in 1..1000{
+        _sum+=i;
     }
+    println!("sum in demo2: {}\n",_sum);
 
-    fn notify(&self){
-        let mut state=self.state.lock().unwrap();
-        match *state{
-            State::Notified => {}
-            State::Empty => *state = State::Notified,
-            State::Waiting=>{
-                *state=State::Empty;
-                self.cond.notify_one();
-            }
-        }
-    }
+    let _ =tx.send(()).await;
 }
 
-impl Wake for Signal{
-    fn wake(self: Arc<Self>){
-        self.notify();
-    }
+fn main() {
+    block_on(demo());
 }
 
-struct Task{
-    future: RefCell<BoxFuture<'static,()>>,
-    signal: Arc<Signal>,
-}
-
-unsafe impl Send for Task{}
-unsafe impl Sync for Task{}
-
-impl Wake for Task{
-    fn wake(self: Arc<Self>){
-        RUNNABLE.with(|runnable| runnable.lock().unwrap().push_back(self.clone()));
-        self.signal.notify();
-    }
-}
-
-fn block_on<F:Future>(future:F)->F::Output{
-    let mut main_fut=std::pin::pin!(future);
-    let signal =Arc::new(Signal::new());
-    let waker=Waker::from(signal.clone());
-    let mut cx=Context::from_waker(&waker);
-    let runnable=Mutex::new(VecDeque::with_capacity(1024));
-    SIGNAL.set(&signal, ||{
-        RUNNABLE.set(&runnable,||{
-            loop{
-                if let Poll::Ready(output)=main_fut.as_mut().poll(&mut cx){
-                    return output;
-                }
-                while let Some(task)=runnable.lock().unwrap().pop_front(){
-                    let waker=Waker::from(task.clone());
-                    let mut cx=Context::from_waker(&waker);
-                    let _ = task.future.borrow_mut().as_mut().poll(&mut cx);
-                }
-                signal.wait();
-            }
-        })
-    })
-}
 // struct Demo;
 // impl Future for Demo{
 //     type Output = ();
@@ -149,31 +99,3 @@ fn block_on<F:Future>(future:F)->F::Output{
 //         signal.wait();
 //     }
 // }
-
-
-async fn demo(){
-    let (tx,rx)=async_channel::bounded::<()>(1);
-    // std::thread::spawn(move||{
-    //     block_on(demo2(tx))
-    // });
-    async_std::task::spawn(demo2(tx));
-    println!("hello world");
-    let _ =rx.recv().await;
-    
-    // std::thread::spawn(move||{
-    //     std::thread::sleep(std::time::Duration::from_secs(5));
-    //     tx.send_blocking(())
-    // });
-    // let _ = rx.recv().await;
-    // println!("hello world");
-    
-}
-
-async fn demo2(tx: async_channel::Sender<()>){
-    println!("hello world2");
-    let _ =tx.send(()).await;
-}
-
-fn main() {
-    block_on(demo());
-}
