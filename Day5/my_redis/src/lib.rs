@@ -2,10 +2,16 @@
 use lazy_static::lazy_static;
 use std::{collections::HashMap,
 		  sync::Mutex,
-		  time::{SystemTime, UNIX_EPOCH}};
+		  time::{SystemTime, UNIX_EPOCH},
+		  };
+use tokio::sync::broadcast;
 use anyhow::anyhow;
 lazy_static! {
 	static ref GLOBAL_HASH_MAP: Mutex<HashMap<String, (String,i64)>> = Mutex::new(HashMap::new());
+}
+
+lazy_static! {
+	static ref GLOBAL_CHANNEL: Mutex<HashMap<String, Vec<broadcast::Sender<String>>>> = Mutex::new(HashMap::new());
 }
 pub struct S;
 
@@ -75,6 +81,74 @@ impl volo_gen::my_redis::ItemService for S {
 			
 		}
 		Ok(volo_gen::my_redis::GetResponse { ret: None})
+	}
+
+	async fn sub_channel(&self, _req: volo_gen::my_redis::SubscribeRequest) 
+	-> ::core::result::Result<volo_gen::my_redis::SubscribeResponse, ::volo_thrift::AnyhowError>
+	{	
+		let channels = String::from(_req.channels);
+		let (tx,mut rx)=broadcast::channel(10);
+		{
+			let mut local_map = GLOBAL_CHANNEL.lock().unwrap();
+			if let Some(_)=local_map.get(&channels){
+				let entry = local_map.entry(channels).or_insert(vec![]);
+				entry.push(tx);
+				// local_map.get(&channels).unwrap().borrow_mut().push((tx,rx));
+				// oldChannel.push((tx,rx));
+				// local_map.insert(channels.to_string(),oldChannel);
+			}else{
+				local_map.insert(channels.to_string(),vec![tx]);
+			}
+			drop(local_map);
+		}
+		// let mut msg=String::new();
+		let thread =tokio::task::spawn(async move {
+			let message = rx.recv().await;
+			match message {
+				Ok(message) => Ok(message),
+				Err(_) => Err(::volo_thrift::AnyhowError::from(anyhow::Error::msg("Subscribe receive error"))),
+			}
+		});
+		let msg = thread.await;
+		match msg{
+			Ok(tmp) =>{
+				Ok(volo_gen::my_redis::SubscribeResponse{success: tmp.unwrap().into()})
+			},
+			Err(e)=>Err(e.into())
+		}
+		// Ok(volo_gen::my_redis::SubscribeResponse{success: msg.into()})
+		// let channels = String::from(_req.channels);
+		// let mut channels :Vec<&str>= channels.split_whitespace().collect();
+		// let (tx,rx)=mspc::channel();
+		// {
+		// 	let local_map = GLOBAL_CHANNEL.lock().unwrap();
+		// 	for chan in channels{
+		// 		if let Some(oldChannel)=local_map.get(chan.to_string()){
+					
+		// 			oldChannel.insert((tx,rx));
+		// 		}else{
+		// 			local_map.insert(chan.to_string(),vec![(tx,rx)]);
+		// 		}
+		// 	}
+		// }
+		// Ok(Default::default())
+	}
+
+	async fn pub_channel(&self, _req: volo_gen::my_redis::PublishRequest) 
+	-> ::core::result::Result<volo_gen::my_redis::PublishResponse, ::volo_thrift::AnyhowError>{
+		let channel = String::from(_req.channel);
+		let msg=String::from(_req.msg);
+		// println!("before lock");
+		let local_map = GLOBAL_CHANNEL.try_lock().unwrap();
+		// println!("after lock");
+		if let Some(clients)=local_map.get(&channel){
+			for client in clients{
+				let _= client.send(msg.clone());
+			}
+			Ok(volo_gen::my_redis::PublishResponse{num: clients.len() as i32})
+		}else{
+			Ok(volo_gen::my_redis::PublishResponse{num: 0})
+		}
 	}
 }
 

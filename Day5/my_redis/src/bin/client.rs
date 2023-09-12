@@ -1,11 +1,17 @@
 use lazy_static::lazy_static;
-use std::net::SocketAddr;
-use std::io::Write;
+// use std::;
+use std::{io::Write,
+          time::{SystemTime, UNIX_EPOCH},
+          net::SocketAddr};
+
 use my_redis::FliterLayer;
 lazy_static! {
     static ref CLIENT: volo_gen::my_redis::ItemServiceClient = {
-        let addr: SocketAddr = "127.0.0.1:8084".parse().unwrap();
-        volo_gen::my_redis::ItemServiceClientBuilder::new("my_redis")
+        let addr: SocketAddr = "127.0.0.1:8081".parse().unwrap();
+        volo_gen::my_redis::ItemServiceClientBuilder::new(SystemTime::now()
+                                                        .duration_since(UNIX_EPOCH)
+                                                        .unwrap()
+                                                        .as_millis().to_string())
             .layer_outer(FliterLayer)
             .address(addr)
             .build()
@@ -39,9 +45,9 @@ async fn main(){
                 match resp{
                     Ok(res)=>{
                         if let Some(ret)=res.ret{
-                            println!("my_redis> \"{}\"",ret);
+                            println!("\"{}\"",ret);
                         }else{
-                            println!("my_redis> (nil)");
+                            println!("(nil)");
                         }
                     },
                     Err(e) => tracing::error!("{:?}", e),
@@ -75,7 +81,7 @@ async fn main(){
                 match resp{
                     Ok(res) =>{
                         if res.ret{
-                            println!("my_redis> \"OK\"");
+                            println!("\"OK\"");
                         }
                         // tracing::info!("{:?}", res);
                     } 
@@ -96,7 +102,7 @@ async fn main(){
                 let resp=CLIENT.ping_item(req).await;
                 match resp{
                     Ok(res) =>{
-                        println!("my_redis> {}",res.value);
+                        println!("{}",res.value);
                         // tracing::info!("{:?}", res);
                     }, 
                     Err(e) => tracing::error!("{:?}", e),
@@ -107,14 +113,54 @@ async fn main(){
                 let resp=CLIENT.del_item(req).await;
                 match resp{
                     Ok(res)=>{
-                        println!("my_redis> {}",res.num);
+                        println!("{}",res.num);
                     },
                     Err(e) => tracing::error!("{:?}", e),
                 }
             },
+            "subscribe"=>{
+                let mut flag=true;
+                loop{
+                    if flag{
+                        println!("(1) \"subscribe\"\n(2) \"{}\"\n(integer)1",part2.trim());
+                        flag=false;
+                    }else{
+                        println!("(1) \"message\"\n(2) \"{}\"",part2.trim());
+                    }
+                    
+                    let resp = CLIENT.sub_channel(volo_gen::my_redis::SubscribeRequest{
+                        channels:String::from(part2.trim()).into(),
+                    }).await;
+                    match resp{
+                        Ok(res)=>{
+                            println!("\"{}\"",res.success);
+                        },
+                        Err(e) => tracing::error!("{:?}", e),
+                    }
+                }
+                
+
+            }
+            "publish"=>{
+                let mut part2s=part2.splitn(2,' ');
+                let channel=part2s.next().unwrap_or("");
+                let msg=part2s.next().unwrap_or("");
+                // println!("before call");
+                let resp=CLIENT.pub_channel(volo_gen::my_redis::PublishRequest{
+                    channel: String::from(channel).into(),
+                    msg: String::from(msg).into(),
+                }).await;
+                match resp{
+                    Ok(res)=>{
+                        println!("(integer){}",res.num);
+                        
+                    },
+                    Err(e) => tracing::error!("{:?}", e),
+                }
+            }
             "exit"=>{
                 break;
-            }
+            },
             _ =>{
                 tracing::error!("No such operation or used mistakenly");
                 continue;

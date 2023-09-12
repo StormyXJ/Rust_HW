@@ -50,6 +50,15 @@ struct SubscribeResponse{
     1: required string success,
 }
 
+struct PublishRequest{
+    1: required string channel,
+    2: required string msg,
+}
+
+struct PublishResponse{
+    1: required i32 num,
+}
+
 
 service ItemService {
     PingResponse PingItem(1: PingRequest req),
@@ -57,4 +66,5 @@ service ItemService {
     SetResponse SetItem(1: SetRequest req),
     GetResponse GetItem(1: GetRequest req),
     SubscribeResponse SubChannel(1: SubscribeRequest req),
+    PublishResponse PubChannel(1: PublishRequest req),
 }
