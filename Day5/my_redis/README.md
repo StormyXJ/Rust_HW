@@ -24,7 +24,7 @@ It also implements a simple `client-cli`, if I didn't misunderstand the meaning.
 set key value [EX/PX] [TIME]
 ```
 
-Add the `key` and `value` to the `HashMap`, you'd  better surround the value by `"(quotes)`, because same space in the string can be very hard to deal with.
+Add the `key` and `value` to the `HashMap`, you'd better surround the value by `"(quotes)`, because some space in the string can be very hard to deal with.
 
 And you can set the expiration time of the key by adding `EX/PX`, `EX` is in seconds while `PX` is in milliseconds.
 
@@ -44,6 +44,7 @@ It will return the value of the key if it exists, otherwise it will output `(nil
 ping //return PONG
 ping string //return the copy of string
 ```
+You are also required to surround the string by `"(quotes)`.\
 ![ping](image-2.png)
 ### Del
 ```bash
